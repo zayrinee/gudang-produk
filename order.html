@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Manajemen Produk</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body class="bg-light">
+
+<div class="container py-4">
+  <h1 class="mb-4 text-center"> 💵 Transaksi Penjualan 💵</h1>
+
+  <!-- Form Input -->
+  <div class="card p-3 mb-4">
+    <div class="row g-2">
+      <div class="col-md">
+        <input type="text" id="nama" class="form-control" placeholder="Nama Produk">
+      </div>
+      <div class="col-md">
+        <input type="number" id="jumlah" class="form-control" placeholder="Jumlah">
+      </div>
+      <div class="col-auto">
+        <button id="btnTambah" class="btn btn-primary" onclick="tambahProduk()">Tambah</button>
+      </div>
+    </div>
+  </div>
+
+<div class="container py-4">
+  <h1 class="mb-4 text-center"> 🛍️Shopping List🛍️</h1>
+
+  <!-- Tabel Produk -->
+  <table class="table table-bordered bg-white">
+    <thead>
+      <tr>
+        <th>Nama Produk</th>
+        <th>Jumlah</th>
+        <th>Harga</th>
+        <th>Subtotal</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody id="produkList"></tbody>
+  </table>
+</div>
+
+<script>
+  // Ganti dengan key Supabase kamu
+  const SUPABASE_URL = "https://pzzgfwdcuwkjgpifnppb.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6emdmd2RjdXdramdwaWZucHBiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0NjQyMTIsImV4cCI6MjA3MzA0MDIxMn0.4hzbDlADo-ezgxaFOlkyPqC11Q7X36IUTA7lkRKcl20";
+
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  function escapeHTML(str) {
+    return str;
+    return str.replace(/[&<>'"]/g, tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag]));
+  }
+
+  async function loadProduk() {
+    //  { data, error } = await db.from("produk").select("*").order("id", { ascending: false });
+    const { data,error } = await db.from("order_produk").select("jumlah, produk(nama, harga)");
+    if (error) {
+      Swal.fire("Error", "Gagal memuat produk: " + error.message, "error");
+      return;
+    }
+
+    console.log(data);
+
+    const list = document.getElementById("produkList");
+
+    let num = 0
+    list.innerHTML = "";
+    data.forEach(item => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHTML(item.nama)}</td>
+        <td>Rp ${Number(item.jumlah).toLocaleString()}</td>
+        <td>Rp ${Number(item.harga).toLocaleString()}</td>
+        <td>${item.jumlah*item.harga}</td>
+        <td>
+          <button class="btn btn-warning btn-sm" onclick="editProduk(${item.id}, '${escapeHTML(item.nama)}', ${item.harga}, ${item.stok})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="hapusProduk(${item.id})">Hapus</button>
+        </td>
+      `;
+      list.appendChild(tr);
+      num += item.harga*item.jumlah;
+    });
+    list.innerHTML += `<tr><td/><td/><td>Jumlah:</td><td>${num}</td><td/></tr>`;
+  }
+
+
+  async function tambahProduk() {
+    let produk_id = document.getElementById("nama").value.trim();
+    let jumlah = document.getElementById("jumlah").value.trim();
+    const btn = document.getElementById("btnTambah");
+
+    if (!nama || !jumlah) {
+      Swal.fire("Oops!", "Semua kolom wajib diisi", "warning");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Memproses...";
+
+    const { error } = await db.from("order_produk").insert([{ produk_id, jumlah }]);
+    btn.disabled = false;
+    btn.textContent = "Tambah";
+
+    if (error) {
+      Swal.fire("Error", "Gagal menambahkan produk: " + error.message, "error");
+      return;
+    }
+    Swal.fire("Sukses", "Produk berhasil ditambahkan", "success");
+    nama.value = "";
+    jumlah.value = "";
+    loadProduk();
+  }
+
+  async function hapusProduk(id) {
+    Swal.fire({
+      title: "Yakin hapus produk?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, hapus"
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        const { error } = await db.from("produk").delete().eq("id", id);
+        if (error) {
+          Swal.fire("Error", "Gagal menghapus produk: " + error.message, "error");
+          return;
+        }
+        Swal.fire("Terhapus!", "Produk berhasil dihapus", "success");
+        loadProduk();
+      }
+    });
+  }
+
+  async function editProduk(id, nama, harga, stok) {
+    const { value: formValues } = await Swal.fire({
+      title: "Edit Produk",
+      html:
+        `<input id="swNama" class="swal2-input" value="${escapeHTML(nama)}">
+         <input id="swHarga" type="number" class="swal2-input" value="${harga}">
+         <input id="swStok" type="number" class="swal2-input" value="${stok}">`,
+      focusConfirm: false,
+      preConfirm: () => {
+        return [
+          document.getElementById("swNama").value.trim(),
+          document.getElementById("swHarga").value.trim(),
+          document.getElementById("swStok").value.trim()
+        ];
+      }
+    });
+
+    if (formValues) {
+      const [newNama, newHarga, newStok] = formValues;
+      const { error } = await db.from("produk").update({
+        nama: newNama,
+        harga: newHarga,
+        stok: newStok
+      }).eq("id", id);
+
+      if (error) {
+        Swal.fire("Error", "Gagal mengupdate produk: " + error.message, "error");
+        return;
+      }
+      Swal.fire("Sukses", "Produk berhasil diupdate", "success");
+      loadProduk();
+    }
+  }
+
+  loadProduk();
+</script>
+
+</body>
+</html>
+
+
+
